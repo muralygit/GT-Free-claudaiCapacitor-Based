@@ -1,1 +1,7 @@
 
+{
+  "appId": "com.muraly.gtfree",
+  "appName": "GT Free",
+  "webDir": "public",
+  "bundledWebRuntime": false
+}
