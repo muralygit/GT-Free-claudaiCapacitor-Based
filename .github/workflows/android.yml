@@ -39,6 +39,18 @@ jobs:
             npx cap add android
           fi
 
+      - name: Patch AGP + compileSdk for plugin compatibility
+        run: |
+          cd android
+          sed -i "s/classpath 'com.android.tools.build:gradle:[0-9.]*'/classpath 'com.android.tools.build:gradle:8.9.1'/" build.gradle
+          sed -i "s/compileSdkVersion = [0-9]*/compileSdkVersion = 36/" variables.gradle
+          sed -i "s/targetSdkVersion = [0-9]*/targetSdkVersion = 36/" variables.gradle
+          cd ..
+
+      - name: Ensure Android SDK Platform 36 is installed
+        run: |
+          yes | sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
+
       - name: Prepare icon for asset generation
         run: |
           mkdir -p resources
