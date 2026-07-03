@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -18,7 +17,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://unpkg.com/dexie@latest/dist/dexie.min.js"></script>
-<!-- QuaggaJS for barcode scanning -->
+<!-- Capacitor core + native Barcode Scanner plugin (for APK builds) -->
+<script src="https://unpkg.com/@capacitor/core@6/dist/capacitor.js"></script>
+<script src="https://unpkg.com/@capacitor/barcode-scanner@3.0.2/dist/plugin.js"></script>
+<!-- QuaggaJS fallback for browser/PWA (Vercel) -->
 <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
 <!-- JsBarcode for barcode generation -->
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
@@ -394,6 +396,9 @@ input.valid{border-color:#86efac!important;}
   background:rgba(0,0,0,0.85);z-index:99999;align-items:center;justify-content:center;
 }
 #barcodeModal.open{display:flex;}
+body.scanner-active{background:transparent!important;}
+body.scanner-active>*:not(#nativeScanCancelBtn){visibility:hidden;}
+#nativeScanCancelBtn{display:none;position:fixed;bottom:40px;left:50%;transform:translateX(-50%);z-index:999999;background:#dc2626;color:#fff;padding:14px 28px;border-radius:30px;font-weight:700;font-size:1em;border:none;box-shadow:0 4px 14px rgba(0,0,0,0.3);}
 .barcode-modal-inner{
   background:#0f172a;border-radius:16px;padding:24px;width:min(480px,95vw);
   border:2px solid #2563eb;color:white;font-family:'Source Sans 3',sans-serif;
@@ -4253,13 +4258,61 @@ let stockInwardLog = [];
 // ── Open Scanner ──
 function openBarcodeScanner(ctx) {
   barcodeContext = ctx;
+  document.getElementById('barcodeManualInput').value = '';
+  if (isNativeBarcodeAvailable()) {
+    startNativeScan();
+    return;
+  }
   document.getElementById('barcodeModal').classList.add('open');
   document.getElementById('barcodeStatus').innerHTML =
     ctx === 'stock'
       ? '<span class="scan-pulse">●</span> Scan product to add stock…'
       : '<span class="scan-pulse">●</span> Starting camera…';
-  document.getElementById('barcodeManualInput').value = '';
   startQuagga();
+}
+
+// ── Native (APK) scanner via Capacitor plugin ──
+function isNativeBarcodeAvailable() {
+  return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()
+    && window.Capacitor.Plugins && window.Capacitor.Plugins.BarcodeScanner);
+}
+
+async function startNativeScan() {
+  const BarcodeScanner = window.Capacitor.Plugins.BarcodeScanner;
+  try {
+    const status = await BarcodeScanner.checkPermission({ force: true });
+    if (!status.granted) {
+      document.getElementById('barcodeModal').classList.add('open');
+      document.getElementById('barcodeStatus').textContent = '⚠️ Camera permission denied. Use manual entry below.';
+      return;
+    }
+    document.body.classList.add('scanner-active');
+    document.getElementById('nativeScanCancelBtn').style.display = 'block';
+    await BarcodeScanner.hideBackground();
+    const result = await BarcodeScanner.startScan();
+    await BarcodeScanner.showBackground();
+    document.body.classList.remove('scanner-active');
+    document.getElementById('nativeScanCancelBtn').style.display = 'none';
+    if (result && result.hasContent) {
+      handleBarcodeDetected(result.content);
+    }
+  } catch (e) {
+    try { await BarcodeScanner.showBackground(); } catch (_) {}
+    document.body.classList.remove('scanner-active');
+    document.getElementById('nativeScanCancelBtn').style.display = 'none';
+    document.getElementById('barcodeModal').classList.add('open');
+    document.getElementById('barcodeStatus').textContent = '⚠️ Scanner error: ' + e.message + '. Use manual entry below.';
+  }
+}
+
+async function cancelNativeScan() {
+  try {
+    const BarcodeScanner = window.Capacitor.Plugins.BarcodeScanner;
+    await BarcodeScanner.stopScan();
+    await BarcodeScanner.showBackground();
+  } catch (e) {}
+  document.body.classList.remove('scanner-active');
+  document.getElementById('nativeScanCancelBtn').style.display = 'none';
 }
 
 // ── Close Scanner ──
@@ -5321,12 +5374,6 @@ if ('serviceWorker' in navigator) {
     .catch(err => console.warn('SW failed:', err));
 }
 </script>
-  <div style="text-align:center; padding:15px; margin-top:20px; border-top:1px solid #eee; font-size:13px; color:#888;">
-        Bill Folder v1.0.0<br>
-        Developed by <strong>Muraly C B</strong><br>
-        📧 7012451340
-    </div>
-</body>
-</html>
+<button id="nativeScanCancelBtn" onclick="cancelNativeScan()">✕ Cancel Scan</button>
 </body>
 </html>
