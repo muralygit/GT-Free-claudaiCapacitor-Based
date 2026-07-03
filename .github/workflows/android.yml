@@ -45,6 +45,7 @@ jobs:
           sed -i "s/classpath 'com.android.tools.build:gradle:[0-9.]*'/classpath 'com.android.tools.build:gradle:8.9.1'/" build.gradle
           sed -i "s/compileSdkVersion = [0-9]*/compileSdkVersion = 36/" variables.gradle
           sed -i "s/targetSdkVersion = [0-9]*/targetSdkVersion = 36/" variables.gradle
+          sed -i "s/minSdkVersion = [0-9]*/minSdkVersion = 26/" variables.gradle
           cd ..
 
       - name: Ensure Android SDK Platform 36 is installed
