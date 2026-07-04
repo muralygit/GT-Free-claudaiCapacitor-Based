@@ -17,9 +17,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://unpkg.com/dexie@latest/dist/dexie.min.js"></script>
-<!-- Capacitor core + native Barcode Scanner plugin (for APK builds) -->
-<script src="https://unpkg.com/@capacitor/core@6/dist/capacitor.js"></script>
+<!-- Capacitor core + native plugins (for APK builds) -->
+<script src="https://unpkg.com/@capacitor/core@7/dist/capacitor.js"></script>
 <script src="https://unpkg.com/@capacitor/barcode-scanner@3.0.2/dist/plugin.js"></script>
+<script src="https://unpkg.com/@capacitor/filesystem@7/dist/plugin.js"></script>
+<script src="https://unpkg.com/@capacitor/share@7/dist/plugin.js"></script>
 <!-- QuaggaJS fallback for browser/PWA (Vercel) -->
 <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
 <!-- JsBarcode for barcode generation -->
@@ -1101,7 +1103,39 @@ function setStatus(msg, cls='') {
 }
 
 function today() { return new Date().toISOString().split('T')[0]; }
+
+// ── Native file save/share (APK) vs browser download (Vercel) ──
+function isNativeApp() {
+  return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+}
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+async function nativeSaveAndShare(base64Data, filename, mimeType) {
+  const Filesystem = window.Capacitor.Plugins.Filesystem;
+  const Share = window.Capacitor.Plugins.Share;
+  await Filesystem.writeFile({ path: filename, data: base64Data, directory: 'CACHE' });
+  const uriResult = await Filesystem.getUri({ directory: 'CACHE', path: filename });
+  await Share.share({
+    title: filename,
+    text: 'Save or share ' + filename,
+    url: uriResult.uri,
+    dialogTitle: 'Save / Share ' + filename
+  });
+}
 function dlFile(content, name, type) {
+  if (isNativeApp()) {
+    const blob = new Blob([content], { type });
+    blobToBase64(blob)
+      .then(b64 => nativeSaveAndShare(b64, name, type))
+      .catch(e => alert('Save failed: ' + e.message));
+    return;
+  }
   const a = Object.assign(document.createElement('a'), {href:URL.createObjectURL(new Blob([content],{type})), download:name});
   a.click(); URL.revokeObjectURL(a.href);
 }
@@ -1169,9 +1203,15 @@ async function emergencyExport(){
       data.audit_log    = await db.audit_log.toArray().catch(()=>[]);
     }
     const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const filename = 'GR_Emergency_Backup_'+new Date().toISOString().slice(0,10)+'.json';
+    if (isNativeApp()) {
+      const b64 = await blobToBase64(blob);
+      await nativeSaveAndShare(b64, filename, 'application/json');
+      return;
+    }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'GR_Emergency_Backup_'+new Date().toISOString().slice(0,10)+'.json';
+    a.download = filename;
     a.click();
   } catch(err){ alert('Export failed: '+err.message); }
 }
@@ -1664,7 +1704,13 @@ async function downloadPDF(){
       }
     }
     const billNo=document.getElementById('billNo')?.value||'invoice';
-    pdf.save('Invoice_'+billNo+'.pdf');
+    const filename = 'Invoice_'+billNo+'.pdf';
+    if (isNativeApp()) {
+      const base64 = pdf.output('datauristring').split(',')[1];
+      await nativeSaveAndShare(base64, filename, 'application/pdf');
+    } else {
+      pdf.save(filename);
+    }
   } catch(e){alert('PDF generation failed: '+e.message);}
   if(btn){btn.textContent='📄 Download PDF';btn.disabled=false;}
 }
@@ -4216,9 +4262,15 @@ function downloadBarcode() {
   const canvas = getBarcodeCanvas();
   if (!canvas) { alert('Please enter a valid barcode value'); return; }
   const val = document.getElementById('bcg_value').value.trim();
+  const filename = 'barcode_' + val + '.png';
+  if (isNativeApp()) {
+    const base64 = canvas.toDataURL('image/png').split(',')[1];
+    nativeSaveAndShare(base64, filename, 'image/png').catch(e => alert('Save failed: ' + e.message));
+    return;
+  }
   const a = document.createElement('a');
   a.href = canvas.toDataURL('image/png');
-  a.download = 'barcode_' + val + '.png';
+  a.download = filename;
   a.click();
 }
 function printBarcodes() {
