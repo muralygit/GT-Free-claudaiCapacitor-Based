@@ -1,6 +1,6 @@
 {
-  "appId": "com.muraly.gtfree",
-  "appName": "GT Free",
-  "webDir": "public",
+  "appId": "com.muraly.grocerytaxfreecapacitorbased",
+  "appName": "GTFree",
+  "webDir": "dist",
   "bundledWebRuntime": false
 }
