@@ -46,11 +46,14 @@ jobs:
           sed -i "s/compileSdkVersion = [0-9]*/compileSdkVersion = 36/" variables.gradle
           sed -i "s/targetSdkVersion = [0-9]*/targetSdkVersion = 36/" variables.gradle
           sed -i "s/minSdkVersion = [0-9]*/minSdkVersion = 26/" variables.gradle
-          cd ..
+
+      - name: Accept Android SDK licenses
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
 
       - name: Ensure Android SDK Platform 36 is installed
         run: |
-          yes | sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
       - name: Prepare icon for asset generation
         run: |
@@ -74,10 +77,10 @@ jobs:
       - name: Strip signingConfig (debug-safe build)
         run: |
           cd android/app
-          if grep -q "signingConfig signingConfigs.release" build.gradle 2>/dev/null; then
+          if [ -f build.gradle ] && grep -q "signingConfig signingConfigs.release" build.gradle; then
             sed -i '/signingConfig signingConfigs.release/d' build.gradle
           fi
-          if grep -q "signingConfig = signingConfigs.getByName(\"release\")" build.gradle.kts 2>/dev/null; then
+          if [ -f build.gradle.kts ] && grep -q 'signingConfig = signingConfigs.getByName("release")' build.gradle.kts; then
             sed -i '/signingConfig = signingConfigs.getByName("release")/d' build.gradle.kts
           fi
 
@@ -85,14 +88,22 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Verify APK was produced
+        run: |
+          find android/app/build/outputs/apk -name "*.apk" -print
+          test -f android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Rename APK
         run: |
           cp android/app/build/outputs/apk/debug/app-debug.apk GTFree-v1.apk
 
       - name: Upload APK artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: GTFree-v1
           path: GTFree-v1.apk
+          if-no-files-found: error
+          retention-days: 14
